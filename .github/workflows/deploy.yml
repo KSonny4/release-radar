@@ -104,7 +104,27 @@ jobs:
                 WHERE e.airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
               ),
               'episodes_last_sync', (SELECT value FROM sync_state WHERE key = 'episodes_last_sync'),
-              'episodes_known_future', (SELECT value FROM sync_state WHERE key = 'episodes_known_future')
+              'episodes_known_future', (SELECT value FROM sync_state WHERE key = 'episodes_known_future'),
+              'harry_potter_followed', EXISTS(SELECT 1 FROM followed_shows WHERE show_id = 68803),
+              'harry_potter_future_events', (
+                SELECT COUNT(*)
+                FROM episodes e
+                JOIN followed_shows f ON f.show_id = e.show_id
+                WHERE e.show_id = 68803
+                  AND e.airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+              ),
+              'harry_potter_next_airdate', (
+                SELECT MIN(e.airdate)
+                FROM episodes e
+                WHERE e.show_id = 68803
+                  AND e.airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+              ),
+              'harry_potter_next_airstamp', (
+                SELECT MIN(e.airstamp)
+                FROM episodes e
+                WHERE e.show_id = 68803
+                  AND e.airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+              )
             );
           "
 
@@ -141,6 +161,23 @@ jobs:
             printf '%s' "$GENERATED_CALENDAR_TOKEN" | npx wrangler secret put CALENDAR_TOKEN
             unset GENERATED_CALENDAR_TOKEN
             echo "Generated CALENDAR_TOKEN once in Cloudflare. It can be revealed only through the Access-protected calendar manager."
+          fi
+
+      - name: Verify Worker secret names
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          SECRET_NAMES="$(npx wrangler secret list --format json)"
+          if printf '%s' "$SECRET_NAMES" | grep -q '"TMDB_BEARER_TOKEN"'; then
+            echo "TMDB_BEARER_TOKEN is present in the Cloudflare Worker."
+          else
+            echo "TMDB_BEARER_TOKEN is missing from the Cloudflare Worker."
+          fi
+          if printf '%s' "$SECRET_NAMES" | grep -q '"CALENDAR_TOKEN"'; then
+            echo "CALENDAR_TOKEN is present in the Cloudflare Worker."
+          else
+            echo "CALENDAR_TOKEN is missing from the Cloudflare Worker."
           fi
 
       - name: Attach radar.pkubelka.cz custom domain
