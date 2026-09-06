@@ -50,3 +50,27 @@ CREATE TABLE IF NOT EXISTS sync_state (
 CREATE TABLE IF NOT EXISTS migration_meta (
   key TEXT PRIMARY KEY, value TEXT NOT NULL, created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS manual_followed_shows (
+  show_id INTEGER PRIMARY KEY REFERENCES shows(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS followed_groups (
+  slug TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL
+);
+
+INSERT INTO manual_followed_shows(show_id,created_at)
+SELECT f.show_id,f.created_at
+FROM followed_shows f
+WHERE NOT EXISTS (
+  SELECT 1 FROM migration_meta WHERE key='manual_followed_shows_backfill_v1'
+)
+ON CONFLICT(show_id) DO NOTHING;
+
+INSERT INTO migration_meta(key,value,created_at)
+SELECT 'manual_followed_shows_backfill_v1','done',CURRENT_TIMESTAMP::text
+WHERE NOT EXISTS (
+  SELECT 1 FROM migration_meta WHERE key='manual_followed_shows_backfill_v1'
+);
