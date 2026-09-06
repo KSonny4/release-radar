@@ -123,5 +123,12 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{"hostname":"radar.pkubelka.cz","service":"release-radar","zone_name":"pkubelka.cz"}'
 
+      - name: Configure Cloudflare Access
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ACCESS_ALLOWED_EMAIL: ksonny4@gmail.com
+        run: node scripts/provision-cloudflare-access.mjs
+
       - name: Smoke check
         run: curl --fail --show-error --silent --retry 10 --retry-delay 6 https://radar.pkubelka.cz/healthz
