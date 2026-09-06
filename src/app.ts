@@ -1,7 +1,7 @@
 import type { Env, EpisodeRow, ExecutionContextLike, MovieRow, ShowRow } from "./types";
 import { BASE_URL } from "./types";
 import { addDays, all, dateOnly, nowIso, scalar } from "./db";
-import { runManualSync } from "./sync";
+import { runManualSync, syncShowSearch } from "./sync";
 import { MOVIE_GENRES, TV_GENRES, attr, chip, clean, empty, episodeRow, esc, forbidden, htmlResponse, isAdmin, jsonResponse, layout, manageMovieGrid, manageShowGrid, movieGrid, numParam, pager, parseGenres, redirect, selected, showGrid } from "./ui";
 
 const PAGE_SIZE=48;
@@ -81,12 +81,13 @@ async function dashboard(request:Request,env:Env):Promise<Response>{
 
 async function seriesBrowse(url:URL,request:Request,env:Env):Promise<Response>{
   const q=clean(url.searchParams.get("q")),genre=clean(url.searchParams.get("genre")),status=clean(url.searchParams.get("status")),min=numParam(url.searchParams.get("min_rating")),calendar=clean(url.searchParams.get("calendar")),sort=url.searchParams.get("sort")||"rating",page=Math.max(1,Math.floor(numParam(url.searchParams.get("page"))||1));
+  if(q){try{await syncShowSearch(env,q);}catch(e){console.warn("TVmaze live search failed",e);}}
   const where:string[]=[],p:unknown[]=[];
   if(q){where.push("s.name ILIKE ?");p.push(`%${q}%`);}if(genre){where.push("s.genres ILIKE ?");p.push(`%\"${genre}\"%`);}if(status){where.push("s.status=?");p.push(status);}if(min!==null){where.push("COALESCE(s.rating,0)>=?");p.push(min);}if(calendar==="saved")where.push("EXISTS(SELECT 1 FROM followed_shows fs WHERE fs.show_id=s.id)");
   const orders:Record<string,string>={rating:"COALESCE(s.rating,0) DESC NULLS LAST,COALESCE(s.weight,0) DESC NULLS LAST,lower(s.name),s.name",weight:"COALESCE(s.weight,0) DESC NULLS LAST,COALESCE(s.rating,0) DESC NULLS LAST",newest:"s.premiered DESC NULLS LAST,lower(s.name),s.name",name:"lower(s.name),s.name"};
   const rows=await all<ShowRow>(env.DB,`SELECT s.*,EXISTS(SELECT 1 FROM followed_shows f WHERE f.show_id=s.id) AS followed FROM shows s ${where.length?`WHERE ${where.join(" AND ")}`:""} ORDER BY ${orders[sort]||orders.rating} LIMIT ? OFFSET ?`,[...p,PAGE_SIZE,(page-1)*PAGE_SIZE]);
   const form=`<form class="filters" method="get"><input name="q" value="${attr(q)}" placeholder="Search series"><select name="genre"><option value="">All genres</option>${TV_GENRES.map(g=>`<option ${selected(g,genre)}>${g}</option>`).join("")}</select><select name="status"><option value="">Any status</option>${["Running","Ended","To Be Determined","In Development"].map(s=>`<option ${selected(s,status)}>${s}</option>`).join("")}</select><input name="min_rating" type="number" min="0" max="10" step="0.1" value="${attr(min===null?"":min)}" placeholder="Min rating"><select name="calendar"><option value="">All series</option><option value="saved" ${selected("saved",calendar)}>In my calendar</option></select><select name="sort">${[["rating","Best rated"],["weight","Most relevant"],["newest","Newest"],["name","Name"]].map(([v,l])=>`<option value="${v}" ${selected(v,sort)}>${l}</option>`).join("")}</select><button>Filter</button></form>`;
-  return htmlResponse(layout("Series",`${pageHead("Series","Find your next obsession","Browse the TVmaze catalogue, then use Manage to choose which shows feed your calendar.")}${form}${showGrid(rows)}${pager(url,page,rows.length===PAGE_SIZE)}`,request,env));
+  return htmlResponse(layout("Series",`${pageHead("Series","Find your next obsession","Search uses live TVmaze results, while the full catalogue continues syncing in the background.")}${form}${showGrid(rows)}${pager(url,page,rows.length===PAGE_SIZE)}`,request,env));
 }
 
 async function showDetail(id:number,request:Request,env:Env):Promise<Response>{
@@ -131,10 +132,10 @@ async function adminPage(request:Request,env:Env):Promise<Response>{
 
 async function adminSeries(url:URL,request:Request,env:Env):Promise<Response>{
   const q=clean(url.searchParams.get("q")),calendar=clean(url.searchParams.get("calendar"));const where:string[]=[],p:unknown[]=[];
-  if(q){where.push("s.name ILIKE ?");p.push(`%${q}%`);}if(calendar==="saved")where.push("EXISTS(SELECT 1 FROM followed_shows f WHERE f.show_id=s.id)");
+  if(q){try{await syncShowSearch(env,q);}catch(e){console.warn("TVmaze live search failed",e);}where.push("s.name ILIKE ?");p.push(`%${q}%`);}if(calendar==="saved")where.push("EXISTS(SELECT 1 FROM followed_shows f WHERE f.show_id=s.id)");
   const rows=await all<ShowRow>(env.DB,`SELECT s.*,EXISTS(SELECT 1 FROM followed_shows f WHERE f.show_id=s.id) AS followed FROM shows s ${where.length?`WHERE ${where.join(" AND ")}`:""} ORDER BY COALESCE(s.weight,0) DESC,COALESCE(s.rating,0) DESC LIMIT 60`,p);
   const form=`<form class="filters" method="get"><input name="q" value="${attr(q)}" placeholder="Search series"><select name="calendar"><option value="">All series</option><option value="saved" ${selected("saved",calendar)}>Already added</option></select><button>Find</button></form>`;
-  return htmlResponse(layout("Manage series",`${pageHead("Series calendar","Pick your shows","Adding a series puts all known future episodes into the Series calendar feed.")}${form}${manageShowGrid(rows)}`,request,env));
+  return htmlResponse(layout("Manage series",`${pageHead("Series calendar","Pick your shows","Searches TVmaze live, then adds all known future episodes for the shows you choose.")}${form}${manageShowGrid(rows)}`,request,env));
 }
 
 async function adminMovies(url:URL,request:Request,env:Env):Promise<Response>{
