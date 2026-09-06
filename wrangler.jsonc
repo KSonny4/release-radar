@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "release-radar",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-05",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "radar.pkubelka.cz",
+      "custom_domain": true
+    }
+  ],
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB"
+    }
+  ],
+  "vars": {
+    "MOVIE_REGION": "CZ",
+    "TMDB_LANGUAGE": "en-US",
+    "MOVIE_WINDOW_DAYS": "365",
+    "TVMAZE_PAGES_PER_SYNC": "5",
+    "TMDB_PAGES_PER_SYNC": "2"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
