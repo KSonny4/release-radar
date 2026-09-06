@@ -16,10 +16,9 @@ async function seriesFeed(env:Env):Promise<Response>{
   const events=rows.filter(e=>e.airdate).map(e=>{
     const se=e.season!==null&&e.number!==null?`S${String(e.season).padStart(2,"0")}E${String(e.number).padStart(2,"0")}`:"Episode";
     const summary=`${e.show_name||"Series"} ${se}${e.name?` · ${e.name}`:""}`;
-    const start=compactDate(e.airdate!);const end=compactDate(dateOnly(addDays(new Date(`${e.airdate}T00:00:00Z`),1)));
-    return ["BEGIN:VEVENT",`UID:tvmaze-${e.id}@radar.pkubelka.cz`,`DTSTAMP:${utcStamp(new Date())}`,`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`,`SUMMARY:${icsEscape(summary)}`,`DESCRIPTION:${icsEscape(`Release Radar · ${BASE_URL}/series/${e.show_id}`)}`,`URL:${BASE_URL}/series/${e.show_id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
+    return ["BEGIN:VEVENT",`UID:tvmaze-${e.id}@radar.pkubelka.cz`,`DTSTAMP:${utcStamp(new Date())}`,...episodeTimingLines(e),`SUMMARY:${icsEscape(summary)}`,`DESCRIPTION:${icsEscape(`Release Radar · ${BASE_URL}/series/${e.show_id}`)}`,`URL:${BASE_URL}/series/${e.show_id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
   }).join("\r\n");
-  return calendarResponse("Release Radar - Series","Followed TV series episode air dates.",events);
+  return calendarResponse("Release Radar - Series","Followed TV series episode air times.",events);
 }
 
 async function movieFeed(env:Env):Promise<Response>{
@@ -31,6 +30,23 @@ async function movieFeed(env:Env):Promise<Response>{
     return ["BEGIN:VEVENT",`UID:tmdb-${m.id}@radar.pkubelka.cz`,`DTSTAMP:${utcStamp(new Date())}`,`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`,`SUMMARY:${icsEscape(m.title)}`,`DESCRIPTION:${icsEscape(`${details}\nRelease Radar · ${BASE_URL}/movies/${m.id}`)}`,`URL:${BASE_URL}/movies/${m.id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
   }).filter(Boolean).join("\r\n");
   return calendarResponse("Release Radar - Movies","Movie release dates you selected in Release Radar.",events);
+}
+
+export function episodeTimingLines(e:Pick<EpisodeRow,"airdate"|"airstamp"|"runtime">):string[]{
+  if(e.airstamp){
+    const start=new Date(e.airstamp);
+    if(!Number.isNaN(start.getTime())){
+      const lines=[`DTSTART:${utcStamp(start)}`];
+      if(e.runtime!==null&&Number.isFinite(e.runtime)&&e.runtime>0){
+        const end=new Date(start.getTime()+Math.round(e.runtime)*60_000);
+        lines.push(`DTEND:${utcStamp(end)}`);
+      }
+      return lines;
+    }
+  }
+  if(!e.airdate)return [];
+  const start=compactDate(e.airdate);const end=compactDate(dateOnly(addDays(new Date(`${e.airdate}T00:00:00Z`),1)));
+  return [`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`];
 }
 
 function calendarResponse(name:string,description:string,events:string):Response{
