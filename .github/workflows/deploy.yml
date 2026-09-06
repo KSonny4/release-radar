@@ -131,5 +131,24 @@ jobs:
           ACCESS_ALLOWED_EMAIL: ksonny4@gmail.com
         run: node scripts/provision-cloudflare-access.mjs
 
-      - name: Smoke check
-        run: curl --fail --show-error --silent --retry 10 --retry-delay 6 https://radar.pkubelka.cz/healthz
+      - name: Verify Access boundaries
+        run: |
+          HEADERS="$(mktemp)"
+          trap 'rm -f "$HEADERS"' EXIT
+
+          ROOT_STATUS="$(curl --silent --show-error --dump-header "$HEADERS" --output /dev/null --max-redirs 0 --write-out '%{http_code}' https://radar.pkubelka.cz/)"
+          if [ "$ROOT_STATUS" != "302" ] || ! grep -qi '/cdn-cgi/access/login/' "$HEADERS"; then
+            echo "Expected homepage to redirect to Cloudflare Access login; got HTTP ${ROOT_STATUS}" >&2
+            sed -n '1,20p' "$HEADERS" >&2
+            exit 1
+          fi
+
+          curl --fail --show-error --silent --retry 10 --retry-delay 6 https://radar.pkubelka.cz/healthz
+
+          for FEED in series movies; do
+            STATUS="$(curl --silent --show-error --output /dev/null --max-redirs 0 --write-out '%{http_code}' "https://radar.pkubelka.cz/calendar/${FEED}.ics")"
+            if [ "$STATUS" != "404" ]; then
+              echo "Expected ${FEED} feed without its calendar token to reach Release Radar and return 404; got HTTP ${STATUS}" >&2
+              exit 1
+            fi
+          done
