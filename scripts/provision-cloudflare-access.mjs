@@ -24,16 +24,6 @@ async function cf(path, init = {}) {
 
 const desiredApps = [
   {
-    name: "Release Radar",
-    domain: "radar.pkubelka.cz",
-    destination: "radar.pkubelka.cz/*",
-    policy: {
-      name: "Petr only",
-      decision: "allow",
-      include: [{ email: { email: allowedEmail } }],
-    },
-  },
-  {
     name: "Release Radar Series Feed",
     domain: "radar.pkubelka.cz/calendar/series.ics",
     destination: "radar.pkubelka.cz/calendar/series.ics",
@@ -61,6 +51,16 @@ const desiredApps = [
       name: "Bypass health check",
       decision: "bypass",
       include: [{ everyone: {} }],
+    },
+  },
+  {
+    name: "Release Radar",
+    domain: "radar.pkubelka.cz",
+    destination: "radar.pkubelka.cz/*",
+    policy: {
+      name: "Petr only",
+      decision: "allow",
+      include: [{ email: { email: allowedEmail } }],
     },
   },
 ];
