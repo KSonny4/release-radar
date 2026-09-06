@@ -21,7 +21,8 @@ async function requestWith(token, path, init = {}, acceptedStatuses = []) {
     },
   });
   const data = await response.json().catch(() => ({}));
-  if ((!response.ok && !acceptedStatuses.includes(response.status)) || data.success === false) {
+  const accepted = acceptedStatuses.includes(response.status);
+  if ((!response.ok && !accepted) || (data.success === false && !accepted)) {
     const errors = Array.isArray(data.errors) && data.errors.length
       ? data.errors.map((e) => `${e.code ?? "?"}: ${e.message ?? e.error ?? "Cloudflare API error"}`).join("; ")
       : `HTTP ${response.status}`;
