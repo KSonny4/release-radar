@@ -1,9 +1,10 @@
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+const zoneId = process.env.CLOUDFLARE_ZONE_ID;
 const token = process.env.CLOUDFLARE_API_TOKEN;
 const allowedEmail = process.env.ACCESS_ALLOWED_EMAIL;
 
-if (!accountId || !token || !allowedEmail) {
-  throw new Error("CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN and ACCESS_ALLOWED_EMAIL are required");
+if (!token || !allowedEmail || (!accountId && !zoneId)) {
+  throw new Error("CLOUDFLARE_API_TOKEN, ACCESS_ALLOWED_EMAIL and an account or zone ID are required");
 }
 
 const apiBase = "https://api.cloudflare.com/client/v4";
@@ -12,14 +13,38 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-async function cf(path, init = {}) {
+async function request(path, init = {}) {
   const response = await fetch(`${apiBase}${path}`, { ...init, headers: { ...headers, ...(init.headers || {}) } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success === false) {
-    const errors = Array.isArray(data.errors) ? data.errors.map((e) => `${e.code ?? "?"}: ${e.message ?? "Cloudflare API error"}`).join("; ") : `HTTP ${response.status}`;
-    throw new Error(`${path}: ${errors}`);
+    const errors = Array.isArray(data.errors) && data.errors.length
+      ? data.errors.map((e) => `${e.code ?? "?"}: ${e.message ?? "Cloudflare API error"}`).join("; ")
+      : `HTTP ${response.status}`;
+    const error = new Error(`${path}: ${errors}`);
+    error.status = response.status;
+    error.cloudflareErrors = data.errors;
+    throw error;
   }
   return data.result;
+}
+
+async function chooseScope() {
+  const scopes = [];
+  if (zoneId) scopes.push(`/zones/${zoneId}`);
+  if (accountId) scopes.push(`/accounts/${accountId}`);
+
+  let lastError;
+  for (const scope of scopes) {
+    try {
+      const apps = await request(`${scope}/access/apps?per_page=200`);
+      console.log(`Using Cloudflare Access scope ${scope.startsWith("/zones/") ? "zone" : "account"}`);
+      return { scope, apps };
+    } catch (error) {
+      lastError = error;
+      console.warn(`Access scope ${scope} unavailable: ${error.message}`);
+    }
+  }
+  throw lastError ?? new Error("No usable Cloudflare Access API scope");
 }
 
 const desiredApps = [
@@ -65,7 +90,7 @@ const desiredApps = [
   },
 ];
 
-const existingApps = await cf(`/accounts/${accountId}/access/apps?per_page=200`);
+const { scope, apps: existingApps } = await chooseScope();
 
 for (const app of desiredApps) {
   const existing = existingApps.find((candidate) => candidate.name === app.name || candidate.domain === app.domain);
@@ -80,8 +105,8 @@ for (const app of desiredApps) {
   };
 
   const result = existing
-    ? await cf(`/accounts/${accountId}/access/apps/${existing.id}`, { method: "PUT", body: JSON.stringify(body) })
-    : await cf(`/accounts/${accountId}/access/apps`, { method: "POST", body: JSON.stringify(body) });
+    ? await request(`${scope}/access/apps/${existing.id}`, { method: "PUT", body: JSON.stringify(body) })
+    : await request(`${scope}/access/apps`, { method: "POST", body: JSON.stringify(body) });
 
   console.log(`${existing ? "updated" : "created"}: ${result.name}`);
 }
