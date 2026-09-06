@@ -28,6 +28,46 @@ async function request(path, init = {}) {
   return data.result;
 }
 
+async function diagnoseToken() {
+  const candidates = accountId
+    ? [
+        {
+          kind: "account-owned",
+          verify: `/accounts/${accountId}/tokens/verify`,
+          detail: (id) => `/accounts/${accountId}/tokens/${id}`,
+        },
+        {
+          kind: "user-owned",
+          verify: "/user/tokens/verify",
+          detail: (id) => `/user/tokens/${id}`,
+        },
+      ]
+    : [{ kind: "user-owned", verify: "/user/tokens/verify", detail: (id) => `/user/tokens/${id}` }];
+
+  for (const candidate of candidates) {
+    try {
+      const verified = await request(candidate.verify);
+      console.log(`Cloudflare token identity: ${candidate.kind}; id=${verified.id}; status=${verified.status}`);
+      try {
+        const details = await request(candidate.detail(verified.id));
+        const safePolicies = (details.policies || []).map((policy) => ({
+          effect: policy.effect,
+          permissions: (policy.permission_groups || []).map((permission) => permission.name || permission.id),
+          resourceKeys: Object.keys(policy.resources || {}),
+        }));
+        console.log(`Cloudflare token name: ${details.name || "(unnamed)"}`);
+        console.log(`Cloudflare token policies: ${JSON.stringify(safePolicies)}`);
+      } catch (error) {
+        console.log(`Cloudflare token details are not introspectable with this token: ${error.status || "?"}`);
+      }
+      return;
+    } catch {
+      // Try the other token ownership model.
+    }
+  }
+  console.log("Cloudflare token verify endpoint did not identify the token ownership model; continuing with API capability checks.");
+}
+
 async function chooseScope() {
   const scopes = [];
   if (zoneId) scopes.push(`/zones/${zoneId}`);
@@ -38,6 +78,10 @@ async function chooseScope() {
     try {
       const apps = await request(`${scope}/access/apps?per_page=200`);
       console.log(`Using Cloudflare Access scope ${scope.startsWith("/zones/") ? "zone" : "account"}`);
+      const radarApps = apps
+        .filter((app) => String(app.domain || "").startsWith("radar.pkubelka.cz"))
+        .map((app) => ({ id: app.id, name: app.name, domain: app.domain, type: app.type }));
+      console.log(`Existing Release Radar Access apps visible to token: ${JSON.stringify(radarApps)}`);
       return { scope, apps };
     } catch (error) {
       lastError = error;
@@ -90,6 +134,7 @@ const desiredApps = [
   },
 ];
 
+await diagnoseToken();
 const { scope, apps: existingApps } = await chooseScope();
 
 for (const app of desiredApps) {
@@ -104,6 +149,7 @@ for (const app of desiredApps) {
     policies: [app.policy],
   };
 
+  console.log(`${existing ? "Updating" : "Creating"} Access app ${app.name}${existing ? ` (${existing.id})` : ""}`);
   const result = existing
     ? await request(`${scope}/access/apps/${existing.id}`, { method: "PUT", body: JSON.stringify(body) })
     : await request(`${scope}/access/apps`, { method: "POST", body: JSON.stringify(body) });
