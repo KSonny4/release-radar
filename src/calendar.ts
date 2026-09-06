@@ -16,7 +16,7 @@ async function seriesFeed(env:Env):Promise<Response>{
   const events=rows.filter(e=>e.airdate).map(e=>{
     const se=e.season!==null&&e.number!==null?`S${String(e.season).padStart(2,"0")}E${String(e.number).padStart(2,"0")}`:"Episode";
     const summary=`${e.show_name||"Series"} ${se}${e.name?` · ${e.name}`:""}`;
-    return ["BEGIN:VEVENT",`UID:tvmaze-${e.id}@radar.pkubelka.cz`,`DTSTAMP:${utcStamp(new Date())}`,...episodeTimingLines(e),`SUMMARY:${icsEscape(summary)}`,`DESCRIPTION:${icsEscape(`Release Radar · ${BASE_URL}/series/${e.show_id}`)}`,`URL:${BASE_URL}/series/${e.show_id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
+    return ["BEGIN:VEVENT",`UID:tvmaze-${e.id}@radar.pkubelka.cz`,...eventRevisionLines(e.updated_at),...episodeTimingLines(e),`SUMMARY:${icsEscape(summary)}`,`DESCRIPTION:${icsEscape(`Release Radar · ${BASE_URL}/series/${e.show_id}`)}`,`URL:${BASE_URL}/series/${e.show_id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
   }).join("\r\n");
   return calendarResponse("Release Radar - Series","Followed TV series episode air times.",events);
 }
@@ -27,7 +27,7 @@ async function movieFeed(env:Env):Promise<Response>{
     const date=m.local_release_date||m.release_date;if(!date)return "";
     const start=compactDate(date);const end=compactDate(dateOnly(addDays(new Date(`${date}T00:00:00Z`),1)));
     const details=[m.local_release_type||"Movie",m.rating!==null?`TMDB ${m.rating.toFixed(1)}/10`:""].filter(Boolean).join(" · ");
-    return ["BEGIN:VEVENT",`UID:tmdb-${m.id}@radar.pkubelka.cz`,`DTSTAMP:${utcStamp(new Date())}`,`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`,`SUMMARY:${icsEscape(m.title)}`,`DESCRIPTION:${icsEscape(`${details}\nRelease Radar · ${BASE_URL}/movies/${m.id}`)}`,`URL:${BASE_URL}/movies/${m.id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
+    return ["BEGIN:VEVENT",`UID:tmdb-${m.id}@radar.pkubelka.cz`,...eventRevisionLines(m.updated_at),`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`,`SUMMARY:${icsEscape(m.title)}`,`DESCRIPTION:${icsEscape(`${details}\nRelease Radar · ${BASE_URL}/movies/${m.id}`)}`,`URL:${BASE_URL}/movies/${m.id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
   }).filter(Boolean).join("\r\n");
   return calendarResponse("Release Radar - Movies","Movie release dates you selected in Release Radar.",events);
 }
@@ -49,9 +49,17 @@ export function episodeTimingLines(e:Pick<EpisodeRow,"airdate"|"airstamp"|"runti
   return [`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`];
 }
 
+export function eventRevisionLines(updatedAt:string):string[]{
+  const modified=new Date(updatedAt);
+  if(Number.isNaN(modified.getTime()))return [`DTSTAMP:${utcStamp(new Date())}`];
+  const stamp=utcStamp(modified);
+  const sequence=Math.max(0,Math.floor(modified.getTime()/60_000));
+  return [`DTSTAMP:${stamp}`,`LAST-MODIFIED:${stamp}`,`SEQUENCE:${sequence}`];
+}
+
 function calendarResponse(name:string,description:string,events:string):Response{
   const body=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Release Radar//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH",`X-WR-CALNAME:${icsEscape(name)}`,`X-WR-CALDESC:${icsEscape(description)}`,"X-WR-TIMEZONE:Europe/Prague","REFRESH-INTERVAL;VALUE=DURATION:PT6H","X-PUBLISHED-TTL:PT6H",events,"END:VCALENDAR",""].filter((x,i,a)=>x!==""||i===a.length-1).join("\r\n");
-  return new Response(body,{headers:{"Content-Type":"text/calendar; charset=utf-8","Content-Disposition":"inline","Cache-Control":"private, max-age=300"}});
+  return new Response(body,{headers:{"Content-Type":"text/calendar; charset=utf-8","Content-Disposition":"inline","Cache-Control":"no-cache, no-store, must-revalidate","Pragma":"no-cache","Expires":"0"}});
 }
 
 function compactDate(v:string):string{return v.replace(/-/g,"");}
