@@ -64,6 +64,17 @@ jobs:
           if [ -n "$ADMIN_TOKEN" ]; then printf '%s' "$ADMIN_TOKEN" | npx wrangler secret put ADMIN_TOKEN; fi
           if [ -n "$CALENDAR_TOKEN" ]; then printf '%s' "$CALENDAR_TOKEN" | npx wrangler secret put CALENDAR_TOKEN; fi
 
+      - name: Attach radar.pkubelka.cz custom domain
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          curl --fail-with-body --show-error --silent \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains" \
+            -X PUT \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"hostname":"radar.pkubelka.cz","service":"release-radar","zone_name":"pkubelka.cz"}'
+
       - name: Smoke check
-        continue-on-error: true
-        run: curl --fail --show-error --silent --retry 5 --retry-delay 5 https://radar.pkubelka.cz/healthz
+        run: curl --fail --show-error --silent --retry 10 --retry-delay 6 https://radar.pkubelka.cz/healthz
