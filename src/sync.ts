@@ -38,6 +38,20 @@ export async function syncShows(env:Env,pagesPerRun:number):Promise<void>{
   await setState(env.DB,"tvmaze_page",String(page)); await setState(env.DB,"shows_last_sync",`${nowIso()} · imported ${imported}`);
 }
 
+export async function syncShowSearch(env:Env,query:string):Promise<number>{
+  const q=query.trim();
+  if(!q)return 0;
+  const r=await fetch(`${TVMAZE_API}/search/shows?q=${encodeURIComponent(q)}`,{headers:{Accept:"application/json","User-Agent":"ReleaseRadar/0.2"}});
+  if(!r.ok)throw new Error(`TVmaze show search: ${r.status}`);
+  const matches=await r.json() as any[];
+  const shows=matches.map(match=>match?.show).filter(show=>show?.id);
+  if(!shows.length)return 0;
+  const marker=nowIso();
+  await batchChunks(env.DB,shows.map(show=>upsertShowStatement(env.DB,show,marker)));
+  await setState(env.DB,"shows_search_last_sync",`${marker} · imported ${shows.length}`);
+  return shows.length;
+}
+
 export async function syncEpisodes(env:Env):Promise<void>{
   const r=await fetch(`${TVMAZE_API}/schedule/full`,{headers:{Accept:"application/json","User-Agent":"ReleaseRadar/0.2"}});
   if(!r.ok) throw new Error(`TVmaze full schedule: ${r.status}`);
