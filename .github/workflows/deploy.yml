@@ -1,6 +1,8 @@
-name: Deploy to Cloudflare Workers
+name: Cloudflare Workers
 
 on:
+  pull_request:
+    branches: [master]
   push:
     branches: [master]
   workflow_dispatch:
@@ -8,25 +10,35 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: release-radar-production
-  cancel-in-progress: false
-
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         run: npm install
-
       - name: Typecheck
         run: npm run typecheck
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: release-radar-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
 
       - name: Deploy Worker and provision bindings
         env:
