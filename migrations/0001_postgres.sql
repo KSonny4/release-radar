@@ -37,6 +37,12 @@ CREATE INDEX IF NOT EXISTS idx_movies_rating ON movies(rating DESC);
 CREATE INDEX IF NOT EXISTS idx_movies_popularity ON movies(popularity DESC);
 CREATE INDEX IF NOT EXISTS idx_movies_votes ON movies(vote_count DESC);
 
+CREATE TABLE IF NOT EXISTS selected_movies (
+  movie_id INTEGER PRIMARY KEY REFERENCES movies(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_selected_movies_created ON selected_movies(created_at);
+
 CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
 );

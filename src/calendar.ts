@@ -1,4 +1,4 @@
-import type { Env, EpisodeRow } from "./types";
+import type { Env, EpisodeRow, MovieRow } from "./types";
 import { addDays, all, dateOnly } from "./db";
 import { BASE_URL } from "./types";
 
@@ -8,7 +8,7 @@ export async function handleCalendarFeed(request:Request,env:Env):Promise<Respon
   if(url.pathname!=="/calendar/series.ics"&&url.pathname!=="/calendar/movies.ics")return null;
   if(!env.CALENDAR_TOKEN)return new Response("Calendar feed is not configured",{status:503});
   if(url.searchParams.get("token")!==env.CALENDAR_TOKEN)return new Response("Not found",{status:404});
-  return url.pathname.endsWith("series.ics")?seriesFeed(env):movieFeed();
+  return url.pathname.endsWith("series.ics")?seriesFeed(env):movieFeed(env);
 }
 
 async function seriesFeed(env:Env):Promise<Response>{
@@ -22,8 +22,15 @@ async function seriesFeed(env:Env):Promise<Response>{
   return calendarResponse("Release Radar - Series","Followed TV series episode air dates.",events);
 }
 
-function movieFeed():Response{
-  return calendarResponse("Release Radar - Movies","Upcoming movies selected by Release Radar. Selection rules are not configured yet.","");
+async function movieFeed(env:Env):Promise<Response>{
+  const rows=await all<MovieRow>(env.DB,`SELECT m.* FROM movies m JOIN selected_movies sm ON sm.movie_id=m.id WHERE COALESCE(m.local_release_date,m.release_date)>=? AND COALESCE(m.local_release_date,m.release_date)<=? ORDER BY COALESCE(m.local_release_date,m.release_date),m.id`,[dateOnly(new Date()),dateOnly(addDays(new Date(),730))]);
+  const events=rows.map(m=>{
+    const date=m.local_release_date||m.release_date;if(!date)return "";
+    const start=compactDate(date);const end=compactDate(dateOnly(addDays(new Date(`${date}T00:00:00Z`),1)));
+    const details=[m.local_release_type||"Movie",m.rating!==null?`TMDB ${m.rating.toFixed(1)}/10`:""].filter(Boolean).join(" · ");
+    return ["BEGIN:VEVENT",`UID:tmdb-${m.id}@radar.pkubelka.cz`,`DTSTAMP:${utcStamp(new Date())}`,`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`,`SUMMARY:${icsEscape(m.title)}`,`DESCRIPTION:${icsEscape(`${details}\nRelease Radar · ${BASE_URL}/movies/${m.id}`)}`,`URL:${BASE_URL}/movies/${m.id}`,"TRANSP:TRANSPARENT","END:VEVENT"].join("\r\n");
+  }).filter(Boolean).join("\r\n");
+  return calendarResponse("Release Radar - Movies","Movie release dates you selected in Release Radar.",events);
 }
 
 function calendarResponse(name:string,description:string,events:string):Response{
