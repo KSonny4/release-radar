@@ -7,11 +7,6 @@
   "triggers": {
     "crons": ["*/15 * * * *"]
   },
-  "d1_databases": [
-    {
-      "binding": "DB"
-    }
-  ],
   "vars": {
     "MOVIE_REGION": "CZ",
     "TMDB_LANGUAGE": "en-US",

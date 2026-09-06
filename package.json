@@ -7,11 +7,14 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
+    "test": "node --experimental-strip-types --test test/**/*.test.ts",
+    "db:migrate:postgres": "psql \"$DATABASE_URL\" -f migrations/0001_postgres.sql"
   },
   "devDependencies": {
     "typescript": "^5.8.3",
     "wrangler": "^4.102.0"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0"
   }
 }

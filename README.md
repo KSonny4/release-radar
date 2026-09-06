@@ -1,6 +1,6 @@
 # Release Radar
 
-Self-hosted TV-series and movie release browser for **radar.pkubelka.cz**, built entirely on **Cloudflare Workers + D1**.
+Self-hosted TV-series and movie release browser for **radar.pkubelka.cz**, built on **Cloudflare Workers + Neon Postgres**.
 
 ## What it does
 
@@ -17,12 +17,12 @@ Self-hosted TV-series and movie release browser for **radar.pkubelka.cz**, built
 ## Cloudflare architecture
 
 - **Worker**: UI, API, iCalendar feed and scheduled ingestion.
-- **D1**: series, episodes, followed shows, movies and sync cursors.
+- **Neon Postgres**: series, episodes, followed shows, movies and sync cursors. The Worker uses Neon’s HTTP serverless driver.
 - **Cron Trigger**: every 15 minutes. TVmaze show pages and TMDB movie pages are incremental. The full future episode schedule runs roughly once per day.
 - **Custom Domain**: `radar.pkubelka.cz`.
-- **GitHub Actions**: type-checks pull requests and deploys `master`, auto-provisions the D1 binding, applies migrations and optionally syncs application secrets.
+- **GitHub Actions**: type-checks pull requests and deploys `master`, applies the Neon schema migration and optionally syncs application secrets.
 
-The importer keeps outbound subrequests under the Workers Free-plan ceiling: a normal run uses at most roughly 47 external requests, and a run that also refreshes the TVmaze full schedule uses roughly 48. **Workers Paid is recommended for production** because the Free plan's 10 ms CPU limit is too tight for reliably parsing the multi-megabyte TVmaze full schedule and writing the resulting D1 rows. Workers Paid currently has a $5 USD monthly minimum.
+The importer keeps provider requests under the Workers Free-plan ceiling: a normal run uses at most roughly 47 external provider requests, and a run that also refreshes the TVmaze full schedule uses roughly 48. Neon writes are grouped into HTTP transactions of up to 500 statements. **Workers Paid is recommended for production** because the Free plan's 10 ms CPU limit is too tight for reliably parsing the multi-megabyte TVmaze full schedule and writing the resulting Neon rows. Workers Paid currently has a $5 USD monthly minimum.
 
 ## One-time Cloudflare / GitHub setup
 
@@ -38,7 +38,7 @@ For reliable ingestion, enable the **Workers Paid** plan on the Cloudflare accou
 
 ### 2. Create a Cloudflare API token
 
-Start with Cloudflare's **Edit Cloudflare Workers** token template and scope it to the correct account/`pkubelka.cz` zone. Also add **D1 Edit** because the workflow provisions and migrates D1.
+Start with Cloudflare's **Edit Cloudflare Workers** token template and scope it to the correct account/`pkubelka.cz` zone.
 
 ### 3. Add GitHub Actions secrets
 
@@ -56,6 +56,7 @@ Recommended application secrets:
 - `TMDB_BEARER_TOKEN` - enables movie ingestion.
 - `ADMIN_TOKEN` - long random value used to log into `/login` and modify followed series / run manual sync.
 - `CALENDAR_TOKEN` - separate long random value used in the private iCalendar URL.
+- `DATABASE_URL` - Neon pooled PostgreSQL connection string used by the Worker and migration job.
 
 If the three application secrets are absent, the Worker still deploys and series browsing can bootstrap, but the relevant features show as unconfigured.
 
@@ -65,8 +66,7 @@ If the three application secrets are absent, the Worker still deploys and series
 
 1. type-check the Worker,
 2. run `wrangler deploy`,
-3. automatically provision the `DB` D1 binding if needed,
-4. apply `migrations/0001_init.sql`,
+3. apply `migrations/0001_postgres.sql` to Neon,
 5. copy optional app secrets to the Worker,
 6. smoke-check `https://radar.pkubelka.cz/healthz`.
 
@@ -75,7 +75,7 @@ If the three application secrets are absent, the Worker still deploys and series
 ```bash
 npm install
 cp .dev.vars.example .dev.vars
-npm run db:migrate:local
+npm run db:migrate:postgres
 npm run dev
 ```
 
@@ -94,7 +94,7 @@ Open `http://localhost:8787`.
 
 ## Data-source notes
 
-TVmaze provides its show index specifically for building a local catalogue. Release Radar walks that index incrementally and stores it in D1. Its `/schedule/full` endpoint provides all future episodes known to TVmaze and is used for the calendar.
+TVmaze provides its show index specifically for building a local catalogue. Release Radar walks that index incrementally and stores it in Neon. Its `/schedule/full` endpoint provides all future episodes known to TVmaze and is used for the calendar.
 
 TMDB is used for upcoming movies, ratings, vote counts, popularity, posters and regional release-date metadata. For Czech releases the importer prefers release type in this order: theatrical, limited theatrical, digital, premiere, physical, TV. If TMDB has no CZ-specific release entry, it falls back to the primary release date.
 
@@ -105,7 +105,7 @@ The UI includes TVmaze and TMDB attribution. Check both providers' current licen
 The movie catalogue deliberately stops before calendar selection. The intended next layer is:
 
 ```text
-movies in D1
+movies in Neon
    -> ranking / personal rules
    -> selected movies
    -> separate /calendar/movies.ics feed

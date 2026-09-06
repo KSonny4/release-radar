@@ -1,5 +1,23 @@
+import { neon } from "@neondatabase/serverless";
 import type { D1Database, D1PreparedStatement } from "./types";
-export const BATCH_SIZE = 50;
+// Neon executes each batch as one HTTP transaction; keep sync runs well below
+// the Worker subrequest ceiling even for the full TVmaze episode schedule.
+export const BATCH_SIZE = 500;
+export function toPostgresSql(sql:string):string{let i=0;return sql.replace(/\?/g,()=>`$${++i}`);}
+export function neonDatabase(connectionString:string):D1Database{
+  const sql=neon(connectionString);
+  class NeonStatement implements D1PreparedStatement {
+    readonly query:string; readonly params:unknown[];
+    constructor(query:string,params:unknown[]=[]){this.query=query;this.params=params;}
+    bind(...values:unknown[]){return new NeonStatement(this.query,values);}
+    async first<T=Record<string,unknown>>(){const rows=await sql.query(toPostgresSql(this.query),this.params) as unknown as T[];return rows[0]??null;}
+    async all<T=Record<string,unknown>>(){return {results:await sql.query(toPostgresSql(this.query),this.params) as unknown as T[]};}
+    async run(){await sql.query(toPostgresSql(this.query),this.params);}
+  }
+  return {prepare(query){return new NeonStatement(query);},async batch(statements){
+    await sql.transaction(statements.map(s=>{const x=s as NeonStatement;return sql.query(toPostgresSql(x.query),x.params) as never;}));return [];
+  }};
+}
 export async function all<T>(db:D1Database, sql:string, params:unknown[]=[]):Promise<T[]>{ const r=await db.prepare(sql).bind(...params).all<T>(); return r.results||[]; }
 export async function scalar(db:D1Database, sql:string, params:unknown[]=[]):Promise<number>{ const r=await db.prepare(sql).bind(...params).first<{n:number}>(); return Number(r?.n||0); }
 export async function batchChunks(db:D1Database, statements:D1PreparedStatement[]):Promise<void>{ for(let i=0;i<statements.length;i+=BATCH_SIZE) await db.batch(statements.slice(i,i+BATCH_SIZE)); }
