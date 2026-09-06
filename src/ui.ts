@@ -5,9 +5,7 @@ export const TV_GENRES=["Action","Adult","Adventure","Anime","Children","Comedy"
 export const MOVIE_GENRES=["Action","Adventure","Animation","Comedy","Crime","Documentary","Drama","Family","Fantasy","History","Horror","Music","Mystery","Romance","Science Fiction","TV Movie","Thriller","War","Western"];
 
 export function layout(title:string,content:string,request:Request,env:Env):string{
-  const admin=isAdmin(request,env);
-  const adminLink=admin?`<a href="/admin/calendar">Manage</a>`:`<a href="/admin">Manage</a>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141414"><title>${esc(title)} · Release Radar</title><style>${styles}</style></head><body><header><a class="brand" href="/">RELEASE <b>RADAR</b></a><nav><a href="/series">Series</a><a href="/new-series">New</a><a href="/movies">Movies</a><a href="/calendar">Calendar</a>${adminLink}</nav></header><main>${content}</main><footer><span>Release Radar · ${BASE_URL}</span><span>TV data: <a href="https://www.tvmaze.com/">TVmaze</a> · Movie data/images: <a href="https://www.themoviedb.org/">TMDB</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.</span></footer><script>${clientScript}</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141414"><title>${esc(title)} · Release Radar</title><style>${styles}</style></head><body><header><a class="brand" href="/">RELEASE <b>RADAR</b></a><nav><a href="/series">Series</a><a href="/new-series">New</a><a href="/movies">Movies</a><a href="/calendar">Calendar</a></nav></header><main>${content}</main><footer><span>Release Radar · ${BASE_URL}</span><span>TV data: <a href="https://www.tvmaze.com/">TVmaze</a> · Movie data/images: <a href="https://www.themoviedb.org/">TMDB</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.</span></footer><script>${clientScript}</script></body></html>`;
 }
 export function htmlResponse(html:string,status=200):Response{return new Response(html,{status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}});}
 export function jsonResponse(v:unknown,status=200):Response{return new Response(JSON.stringify(v),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});}
@@ -31,7 +29,7 @@ export function showGrid(rows:ShowRow[]):string{
 
 export function movieGrid(rows:MovieRow[]):string{
   if(!rows.length)return empty("No movies match this view yet. Movie data starts filling after TMDB is configured.");
-  return `<div class="grid">${rows.map(m=>`<a class="card" href="/movies/${m.id}"><div class="poster-wrap">${m.poster_path?`<img class="poster" loading="lazy" src="https://image.tmdb.org/t/p/w342${attr(m.poster_path)}" alt="">`:placeholder(m.title)}${m.selected?`<span class="badge">In calendar</span>`:""}</div><div class="card-body"><h3>${esc(m.title)}</h3><p class="meta">${esc(m.local_release_date||m.release_date||"Date unknown")} · ${esc(m.local_release_type||"Movie")}</p><div class="chips">${m.rating!==null?chip(`★ ${m.rating.toFixed(1)}`):""}${m.vote_count!==null?chip(`${m.vote_count} votes`):""}${parseGenres(m.genres).slice(0,1).map(chip).join("")}</div></div></a>`).join("")}</div>`;
+  return `<div class="grid">${rows.map(m=>`<article class="card browse-card"><a class="card-link" href="/movies/${m.id}"><div class="poster-wrap">${m.poster_path?`<img class="poster" loading="lazy" src="https://image.tmdb.org/t/p/w342${attr(m.poster_path)}" alt="">`:placeholder(m.title)}${m.selected?`<span class="badge">In calendar</span>`:""}</div><div class="card-body"><h3>${esc(m.title)}</h3><p class="meta">${esc(m.local_release_date||m.release_date||"Date unknown")} · ${esc(m.local_release_type||"Movie")}</p><div class="chips">${m.rating!==null?chip(`★ ${m.rating.toFixed(1)}`):""}${m.vote_count!==null?chip(`${m.vote_count} votes`):""}${parseGenres(m.genres).slice(0,1).map(chip).join("")}</div></div></a><form class="poster-toggle" data-calendar-toggle="movies" method="post" action="/admin/movies/${m.id}/${m.selected?"unselect":"select"}"><button type="submit" aria-label="${m.selected?"Remove from":"Add to"} calendar" title="${m.selected?"Remove from":"Add to"} calendar">${m.selected?"✓":"＋"}</button></form></article>`).join("")}</div>`;
 }
 
 export function manageShowGrid(rows:ShowRow[]):string{
@@ -82,14 +80,14 @@ document.addEventListener('submit',async(e)=>{
   const button=form.querySelector('button');
   if(!button)return;
   const action=new URL(form.action,location.href);
-  const added=/\/(unfollow|unselect)$/.test(action.pathname);
+  const removing=/(unfollow|unselect)$/.test(action.pathname);
   const original=button.textContent;
   form.dataset.busy='1';button.disabled=true;
   try{
     const response=await fetch(action.href,{method:'POST',body:new FormData(form),credentials:'same-origin'});
     if(!response.ok)throw new Error('calendar update failed');
-    const nextAdded=!added;
-    action.pathname=action.pathname.replace(added?/(unfollow|unselect)$/:/(follow|select)$/,(m)=>added?(m==='unfollow'?'follow':'select'):(m==='follow'?'unfollow':'unselect'));
+    const nextAdded=!removing;
+    action.pathname=action.pathname.replace(/(follow|unfollow|select|unselect)$/,(m)=>m==='follow'?'unfollow':m==='unfollow'?'follow':m==='select'?'unselect':'select');
     form.action=action.pathname+action.search;
     setCalendarCardState(form,nextAdded);
   }catch{
@@ -99,10 +97,8 @@ document.addEventListener('submit',async(e)=>{
 });
 
 (()=>{
-  if(location.pathname!=='/series'&&location.pathname!=='/admin/series')return;
   const form=document.querySelector('form.filters');
-  const input=form&&form.querySelector('input[name="q"]');
-  if(!form||!input)return;
+  if(!form)return;
   let timer=0,sequence=0;
   const run=async()=>{
     const url=new URL(location.href);
@@ -114,12 +110,14 @@ document.addEventListener('submit',async(e)=>{
     form.classList.add('is-loading');
     try{
       const response=await fetch(url.pathname+url.search,{credentials:'same-origin'});
-      if(!response.ok)throw new Error('search failed');
+      if(!response.ok)throw new Error('filter failed');
       const doc=new DOMParser().parseFromString(await response.text(),'text/html');
       if(current!==sequence)return;
       const fresh=doc.querySelector('main .grid');
       const existing=document.querySelector('main .grid');
       if(fresh&&existing)existing.replaceWith(fresh);
+      const freshEmpty=doc.querySelector('main .empty');
+      if(!fresh&&freshEmpty&&existing)existing.replaceWith(freshEmpty);
       const freshPager=doc.querySelector('main .pager');
       const oldPager=document.querySelector('main .pager');
       if(freshPager&&oldPager)oldPager.replaceWith(freshPager);
@@ -127,9 +125,10 @@ document.addEventListener('submit',async(e)=>{
       history.replaceState(null,'',url.pathname+url.search);
     }catch{}finally{if(current===sequence)form.classList.remove('is-loading');}
   };
-  const schedule=()=>{clearTimeout(timer);timer=setTimeout(run,280);};
-  input.addEventListener('input',schedule);
-  form.querySelectorAll('select').forEach(el=>el.addEventListener('change',run));
+  const schedule=(delay=280)=>{clearTimeout(timer);timer=setTimeout(run,delay);};
+  form.querySelectorAll('input[type="text"],input:not([type]),input[type="search"]').forEach(el=>el.addEventListener('input',()=>schedule(280)));
+  form.querySelectorAll('input[type="number"]').forEach(el=>el.addEventListener('input',()=>schedule(320)));
+  form.querySelectorAll('input[type="date"],select').forEach(el=>el.addEventListener('change',()=>schedule(0)));
   form.addEventListener('submit',e=>{e.preventDefault();clearTimeout(timer);run();});
 })();
 `;
