@@ -21,6 +21,7 @@ if (current.length) { console.log("D1 import already complete; skipping safely")
 const existing = await sql.query("SELECT (SELECT count(*) FROM shows)+(SELECT count(*) FROM episodes)+(SELECT count(*) FROM followed_shows)+(SELECT count(*) FROM movies)+(SELECT count(*) FROM sync_state) AS n");
 const queries = [];
 for (const [table, columns] of Object.entries(tables)) {
+  if (!Object.hasOwn(snapshot.tables || {}, table) || !Object.hasOwn(snapshot.counts || {}, table)) throw new Error(`snapshot is missing table ${table}`);
   const rows = snapshot.tables[table] || [];
   for (let offset=0; offset<rows.length; offset+=500) {
     const chunk = rows.slice(offset, offset+500), params = [], values = chunk.map(row => `(${columns.map(column => { params.push(row[column] ?? null); return `$${params.length}`; }).join(",")})`).join(",");

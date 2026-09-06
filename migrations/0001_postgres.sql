@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS shows (
   web_channel TEXT, image_medium TEXT, image_original TEXT, summary TEXT,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_shows_name ON shows(name);
+CREATE INDEX IF NOT EXISTS idx_shows_name ON shows(lower(name), name);
 CREATE INDEX IF NOT EXISTS idx_shows_premiered ON shows(premiered);
 CREATE INDEX IF NOT EXISTS idx_shows_rating ON shows(rating DESC);
 CREATE INDEX IF NOT EXISTS idx_shows_status ON shows(status);

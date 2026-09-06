@@ -29,6 +29,8 @@ jobs:
         run: npm install
       - name: Typecheck
         run: npm run typecheck
+      - name: Tests
+        run: npm test
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -60,8 +62,12 @@ jobs:
         run: |
           D1_DUMP="$(mktemp)"
           D1_SNAPSHOT="$(mktemp)"
-          trap 'rm -f "$D1_DUMP" "$D1_SNAPSHOT"' EXIT
-          npx wrangler d1 export e7227c0d-0652-4fc8-bc8d-c3f9cd3dee10 --remote --output "$D1_DUMP"
+          D1_LOG="$(mktemp)"
+          trap 'rm -f "$D1_DUMP" "$D1_SNAPSHOT" "$D1_LOG"' EXIT
+          if ! npx wrangler d1 export e7227c0d-0652-4fc8-bc8d-c3f9cd3dee10 --remote --output "$D1_DUMP" >"$D1_LOG" 2>&1; then
+            echo "D1 export failed; see Wrangler exit status without exposing export details" >&2
+            exit 1
+          fi
           python3 scripts/d1-export-to-json.py "$D1_DUMP" "$D1_SNAPSHOT"
           node scripts/import-d1-snapshot.mjs "$D1_SNAPSHOT"
 

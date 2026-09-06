@@ -34,7 +34,7 @@ The repository is deployment-ready, but credentials cannot be created from repos
 
 `radar.pkubelka.cz` must **not** already have a conflicting CNAME. The Worker config declares it as a Cloudflare **Custom Domain**, so Cloudflare creates the required DNS record and certificate during deployment.
 
-For reliable ingestion, enable the **Workers Paid** plan on the Cloudflare account.
+For reliable ingestion, the GitHub Actions runner executes the scheduled sync outside the Worker CPU and subrequest limits.
 
 ### 2. Create a Cloudflare API token
 
@@ -56,19 +56,22 @@ Recommended application secrets:
 - `TMDB_BEARER_TOKEN` - enables movie ingestion.
 - `ADMIN_TOKEN` - long random value used to log into `/login` and modify followed series / run manual sync.
 - `CALENDAR_TOKEN` - separate long random value used in the private iCalendar URL.
-- `DATABASE_URL` - Neon pooled PostgreSQL connection string used by the Worker and migration job.
+- `DATABASE_URL` - required Neon pooled PostgreSQL connection string used by the Worker, sync job and migration job.
 
-If the three application secrets are absent, the Worker still deploys and series browsing can bootstrap, but the relevant features show as unconfigured.
+If the three optional application secrets are absent, the relevant features show as unconfigured. `DATABASE_URL` is required.
 
 ### 4. Merge to `master`
 
-`.github/workflows/deploy.yml` will:
+For the first deployment, run the workflow manually with `migrate_d1=true`. `.github/workflows/deploy.yml` will:
 
 1. type-check the Worker,
-2. run `wrangler deploy`,
-3. apply `migrations/0001_postgres.sql` to Neon,
+2. apply `migrations/0001_postgres.sql` to Neon,
+3. export D1 to a temporary file and import and verify it in Neon,
+4. require the verified import marker before configuring and deploying the Worker,
 5. copy optional app secrets to the Worker,
 6. smoke-check `https://radar.pkubelka.cz/healthz`.
+
+Subsequent deployments leave `migrate_d1=false`; the marker makes the import step safely unnecessary and the guard still blocks deployment if the initial import was not verified.
 
 ## Local development
 

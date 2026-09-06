@@ -1,3 +1,6 @@
+# Required for every runtime and migration.
+DATABASE_URL=postgresql://user:password@host/db?sslmode=require
+
 # Optional for series-only local browsing. Required for movie sync.
 TMDB_BEARER_TOKEN=replace-me
 
