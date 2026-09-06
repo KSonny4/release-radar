@@ -1,24 +1,26 @@
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const zoneId = process.env.CLOUDFLARE_ZONE_ID;
-const token = process.env.CLOUDFLARE_API_TOKEN;
+const bootstrapToken = process.env.CLOUDFLARE_API_TOKEN;
 const allowedEmail = process.env.ACCESS_ALLOWED_EMAIL;
 
-if (!token || !allowedEmail || (!accountId && !zoneId)) {
-  throw new Error("CLOUDFLARE_API_TOKEN, ACCESS_ALLOWED_EMAIL and an account or zone ID are required");
+if (!accountId || !bootstrapToken || !allowedEmail) {
+  throw new Error("CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN and ACCESS_ALLOWED_EMAIL are required");
 }
 
 const apiBase = "https://api.cloudflare.com/client/v4";
-const headers = {
-  Authorization: `Bearer ${token}`,
-  "Content-Type": "application/json",
-};
 
-async function request(path, init = {}) {
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers: { ...headers, ...(init.headers || {}) } });
+async function requestWith(token, path, init = {}) {
+  const response = await fetch(`${apiBase}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success === false) {
     const errors = Array.isArray(data.errors) && data.errors.length
-      ? data.errors.map((e) => `${e.code ?? "?"}: ${e.message ?? "Cloudflare API error"}`).join("; ")
+      ? data.errors.map((e) => `${e.code ?? "?"}: ${e.message ?? e.error ?? "Cloudflare API error"}`).join("; ")
       : `HTTP ${response.status}`;
     const error = new Error(`${path}: ${errors}`);
     error.status = response.status;
@@ -28,67 +30,43 @@ async function request(path, init = {}) {
   return data.result;
 }
 
-async function diagnoseToken() {
-  const candidates = accountId
-    ? [
-        {
-          kind: "account-owned",
-          verify: `/accounts/${accountId}/tokens/verify`,
-          detail: (id) => `/accounts/${accountId}/tokens/${id}`,
-        },
-        {
-          kind: "user-owned",
-          verify: "/user/tokens/verify",
-          detail: (id) => `/user/tokens/${id}`,
-        },
-      ]
-    : [{ kind: "user-owned", verify: "/user/tokens/verify", detail: (id) => `/user/tokens/${id}` }];
+const bootstrapRequest = (path, init = {}) => requestWith(bootstrapToken, path, init);
 
-  for (const candidate of candidates) {
-    try {
-      const verified = await request(candidate.verify);
-      console.log(`Cloudflare token identity: ${candidate.kind}; id=${verified.id}; status=${verified.status}`);
-      try {
-        const details = await request(candidate.detail(verified.id));
-        const safePolicies = (details.policies || []).map((policy) => ({
-          effect: policy.effect,
-          permissions: (policy.permission_groups || []).map((permission) => permission.name || permission.id),
-          resourceKeys: Object.keys(policy.resources || {}),
-        }));
-        console.log(`Cloudflare token name: ${details.name || "(unnamed)"}`);
-        console.log(`Cloudflare token policies: ${JSON.stringify(safePolicies)}`);
-      } catch (error) {
-        console.log(`Cloudflare token details are not introspectable with this token: ${error.status || "?"}`);
-      }
-      return;
-    } catch {
-      // Try the other token ownership model.
-    }
+async function createEphemeralAccessToken() {
+  const groups = await bootstrapRequest(`/accounts/${accountId}/tokens/permission_groups`);
+  const accessGroup = groups.find((group) =>
+    (group.name === "Access: Apps and Policies Write" || group.name === "Access: Apps and Policies Edit") &&
+    Array.isArray(group.scopes) && group.scopes.includes("com.cloudflare.api.account")
+  );
+  if (!accessGroup) {
+    const candidates = groups
+      .filter((group) => String(group.name || "").includes("Access: Apps and Policies"))
+      .map((group) => ({ name: group.name, scopes: group.scopes }));
+    throw new Error(`Could not find account-scoped Access write permission group. Candidates: ${JSON.stringify(candidates)}`);
   }
-  console.log("Cloudflare token verify endpoint did not identify the token ownership model; continuing with API capability checks.");
+
+  const expiresOn = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const created = await bootstrapRequest(`/accounts/${accountId}/tokens`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: `release-radar-access-${Date.now()}`,
+      policies: [{
+        effect: "allow",
+        resources: { [`com.cloudflare.api.account.${accountId}`]: "*" },
+        permission_groups: [{ id: accessGroup.id }],
+      }],
+      expires_on: expiresOn,
+    }),
+  });
+
+  if (!created?.id || !created?.value) throw new Error("Cloudflare created an Access token without returning its id/value");
+  console.log(`Created ephemeral Access-only token ${created.id}; expires ${expiresOn}`);
+  return { id: created.id, value: created.value };
 }
 
-async function chooseScope() {
-  const scopes = [];
-  if (zoneId) scopes.push(`/zones/${zoneId}`);
-  if (accountId) scopes.push(`/accounts/${accountId}`);
-
-  let lastError;
-  for (const scope of scopes) {
-    try {
-      const apps = await request(`${scope}/access/apps?per_page=200`);
-      console.log(`Using Cloudflare Access scope ${scope.startsWith("/zones/") ? "zone" : "account"}`);
-      const radarApps = apps
-        .filter((app) => String(app.domain || "").startsWith("radar.pkubelka.cz"))
-        .map((app) => ({ id: app.id, name: app.name, domain: app.domain, type: app.type }));
-      console.log(`Existing Release Radar Access apps visible to token: ${JSON.stringify(radarApps)}`);
-      return { scope, apps };
-    } catch (error) {
-      lastError = error;
-      console.warn(`Access scope ${scope} unavailable: ${error.message}`);
-    }
-  }
-  throw lastError ?? new Error("No usable Cloudflare Access API scope");
+async function deleteEphemeralToken(id) {
+  await bootstrapRequest(`/accounts/${accountId}/tokens/${id}`, { method: "DELETE" });
+  console.log(`Revoked ephemeral Access-only token ${id}`);
 }
 
 const desiredApps = [
@@ -134,25 +112,42 @@ const desiredApps = [
   },
 ];
 
-await diagnoseToken();
-const { scope, apps: existingApps } = await chooseScope();
+let ephemeral;
+try {
+  ephemeral = await createEphemeralAccessToken();
+  const accessRequest = (path, init = {}) => requestWith(ephemeral.value, path, init);
+  const scope = `/accounts/${accountId}`;
+  const existingApps = await accessRequest(`${scope}/access/apps?per_page=200`);
+  const radarApps = existingApps
+    .filter((app) => String(app.domain || "").startsWith("radar.pkubelka.cz"))
+    .map((app) => ({ id: app.id, name: app.name, domain: app.domain }));
+  console.log(`Existing Release Radar Access apps: ${JSON.stringify(radarApps)}`);
 
-for (const app of desiredApps) {
-  const existing = existingApps.find((candidate) => candidate.name === app.name || candidate.domain === app.domain);
-  const body = {
-    name: app.name,
-    type: "self_hosted",
-    domain: app.domain,
-    destinations: [{ type: "public", uri: app.destination }],
-    app_launcher_visible: false,
-    session_duration: "24h",
-    policies: [app.policy],
-  };
+  for (const app of desiredApps) {
+    const existing = existingApps.find((candidate) => candidate.name === app.name || candidate.domain === app.domain);
+    const body = {
+      name: app.name,
+      type: "self_hosted",
+      domain: app.domain,
+      destinations: [{ type: "public", uri: app.destination }],
+      app_launcher_visible: false,
+      session_duration: "24h",
+      policies: [app.policy],
+    };
 
-  console.log(`${existing ? "Updating" : "Creating"} Access app ${app.name}${existing ? ` (${existing.id})` : ""}`);
-  const result = existing
-    ? await request(`${scope}/access/apps/${existing.id}`, { method: "PUT", body: JSON.stringify(body) })
-    : await request(`${scope}/access/apps`, { method: "POST", body: JSON.stringify(body) });
-
-  console.log(`${existing ? "updated" : "created"}: ${result.name}`);
+    console.log(`${existing ? "Updating" : "Creating"} Access app ${app.name}`);
+    const result = existing
+      ? await accessRequest(`${scope}/access/apps/${existing.id}`, { method: "PUT", body: JSON.stringify(body) })
+      : await accessRequest(`${scope}/access/apps`, { method: "POST", body: JSON.stringify(body) });
+    console.log(`${existing ? "updated" : "created"}: ${result.name}`);
+  }
+} finally {
+  if (ephemeral?.id) {
+    try {
+      await deleteEphemeralToken(ephemeral.id);
+    } catch (error) {
+      console.error(`Failed to revoke ephemeral Access token ${ephemeral.id}: ${error.message}`);
+      throw error;
+    }
+  }
 }
