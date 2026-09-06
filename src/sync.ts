@@ -1,5 +1,6 @@
 import type { D1Database, D1PreparedStatement, Env } from "./types";
 import { addDays, batchChunks, dateOnly, errorMessage, getState, intEnv, nowIso, nullable, nullableNumber, setState, stripHtml } from "./db";
+import { applySubscribedSeriesGroups } from "./series-groups";
 
 const TVMAZE_API="https://api.tvmaze.com";
 const TMDB_API="https://api.themoviedb.org/3";
@@ -35,6 +36,7 @@ export async function syncShows(env:Env,pagesPerRun:number):Promise<void>{
     const shows=await r.json() as any[]; const marker=nowIso();
     await batchChunks(env.DB,shows.map(s=>upsertShowStatement(env.DB,s,marker))); imported+=shows.length; page++;
   }
+  await applySubscribedSeriesGroups(env);
   await setState(env.DB,"tvmaze_page",String(page)); await setState(env.DB,"shows_last_sync",`${nowIso()} · imported ${imported}`);
 }
 
@@ -48,6 +50,7 @@ export async function syncShowSearch(env:Env,query:string):Promise<number>{
   if(!shows.length)return 0;
   const marker=nowIso();
   await batchChunks(env.DB,shows.map(show=>upsertShowStatement(env.DB,show,marker)));
+  await applySubscribedSeriesGroups(env);
   await setState(env.DB,"shows_search_last_sync",`${marker} · imported ${shows.length}`);
   return shows.length;
 }
@@ -64,6 +67,7 @@ export async function syncEpisodes(env:Env):Promise<void>{
   }
   await batchChunks(env.DB,stmts);
   await env.DB.prepare("DELETE FROM episodes WHERE airdate >= ? AND updated_at <> ?").bind(dateOnly(new Date()),marker).run();
+  await applySubscribedSeriesGroups(env);
   await setState(env.DB,"episodes_last_sync",marker); await setState(env.DB,"episodes_known_future",String(stmts.length));
 }
 
