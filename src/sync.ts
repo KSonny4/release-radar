@@ -14,6 +14,7 @@ export async function runScheduledSync(env:Env,scheduledAt:Date):Promise<void>{
     const last=await getState(env.DB,"episodes_last_sync");
     if(!last||Date.now()-Date.parse(last)>20*60*60*1000) await syncEpisodes(env);
     await setState(env.DB,"cron_last_success",nowIso());
+    await env.DB.prepare("DELETE FROM sync_state WHERE key=?").bind("cron_last_error").run();
   }catch(e){await setState(env.DB,"cron_last_error",errorMessage(e));throw e;}
 }
 
