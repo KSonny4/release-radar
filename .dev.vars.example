@@ -1,0 +1,8 @@
+# Optional for series-only local browsing. Required for movie sync.
+TMDB_BEARER_TOKEN=replace-me
+
+# Required to follow/unfollow series or trigger manual syncs.
+ADMIN_TOKEN=replace-with-long-random-string
+
+# Required for /calendar/series.ics?token=...
+CALENDAR_TOKEN=replace-with-a-different-long-random-string
