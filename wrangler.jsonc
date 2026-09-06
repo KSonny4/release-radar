@@ -4,9 +4,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-05",
   "workers_dev": false,
-  "triggers": {
-    "crons": ["*/15 * * * *"]
-  },
   "vars": {
     "MOVIE_REGION": "CZ",
     "TMDB_LANGUAGE": "en-US",

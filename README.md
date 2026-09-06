@@ -16,13 +16,13 @@ Self-hosted TV-series and movie release browser for **radar.pkubelka.cz**, built
 
 ## Cloudflare architecture
 
-- **Worker**: UI, API, iCalendar feed and scheduled ingestion.
+- **Worker**: UI, API and iCalendar feed.
 - **Neon Postgres**: series, episodes, followed shows, movies and sync cursors. The Worker uses Neon’s HTTP serverless driver.
-- **Cron Trigger**: every 15 minutes. TVmaze show pages and TMDB movie pages are incremental. The full future episode schedule runs roughly once per day.
+- **GitHub Actions sync**: runs every 15 minutes against Neon. TVmaze show pages and TMDB movie pages are incremental; the full future episode schedule runs roughly once per day.
 - **Custom Domain**: `radar.pkubelka.cz`.
-- **GitHub Actions**: type-checks pull requests and deploys `master`, applies the Neon schema migration and optionally syncs application secrets.
+- **GitHub Actions deploy**: type-checks pull requests and deploys `master`, applies the Neon schema migration and optionally imports the preserved D1 snapshot.
 
-The importer keeps provider requests under the Workers Free-plan ceiling: a normal run uses at most roughly 47 external provider requests, and a run that also refreshes the TVmaze full schedule uses roughly 48. Neon writes are grouped into HTTP transactions of up to 500 statements. **Workers Paid is recommended for production** because the Free plan's 10 ms CPU limit is too tight for reliably parsing the multi-megabyte TVmaze full schedule and writing the resulting Neon rows. Workers Paid currently has a $5 USD monthly minimum.
+The importer runs in GitHub Actions, so its provider and Neon requests are outside the Worker request budget. Neon writes are grouped into HTTP transactions of up to 500 statements. GitHub's scheduled workflows can start late during platform load; use the manual sync dispatch when an immediate refresh is needed.
 
 ## One-time Cloudflare / GitHub setup
 

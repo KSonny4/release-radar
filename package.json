@@ -7,10 +7,11 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/**/*.test.ts",
+    "test": "tsx --test test/*.test.ts",
     "db:migrate:postgres": "psql \"$DATABASE_URL\" -f migrations/0001_postgres.sql"
   },
   "devDependencies": {
+    "tsx": "^4.23.13",
     "typescript": "^5.8.3",
     "wrangler": "^4.102.0"
   },

@@ -1,0 +1,38 @@
+name: Release Radar sync
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-radar-production
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Require verified data migration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/verify-neon-import.mjs
+      - name: Run scheduled sync against Neon
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
+          MOVIE_REGION: CZ
+          TMDB_LANGUAGE: en-US
+          MOVIE_WINDOW_DAYS: 365
+          TVMAZE_PAGES_PER_SYNC: 5
+          TMDB_PAGES_PER_SYNC: 2
+        run: npx tsx scripts/run-sync.ts

@@ -40,3 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_movies_votes ON movies(vote_count DESC);
 CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS migration_meta (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL, created_at TEXT NOT NULL
+);
