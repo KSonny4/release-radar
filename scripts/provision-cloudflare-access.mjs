@@ -103,7 +103,7 @@ const desiredApps = [
   {
     name: "Release Radar",
     domain: "radar.pkubelka.cz",
-    destination: "radar.pkubelka.cz/*",
+    destination: "radar.pkubelka.cz",
     policy: {
       name: "Petr only",
       decision: "allow",
