@@ -74,8 +74,44 @@ CREATE INDEX IF NOT EXISTS idx_movies_rating ON movies(rating DESC);
 CREATE INDEX IF NOT EXISTS idx_movies_popularity ON movies(popularity DESC);
 CREATE INDEX IF NOT EXISTS idx_movies_votes ON movies(vote_count DESC);
 
+CREATE TABLE IF NOT EXISTS selected_movies (
+  movie_id INTEGER PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(movie_id) REFERENCES movies(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS migration_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS manual_followed_shows (
+  show_id INTEGER PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(show_id) REFERENCES shows(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS followed_groups (
+  slug TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO manual_followed_shows(show_id,created_at)
+SELECT f.show_id,f.created_at
+FROM followed_shows f
+WHERE NOT EXISTS (
+  SELECT 1 FROM migration_meta WHERE key='manual_followed_shows_backfill_v1'
+);
+
+INSERT OR IGNORE INTO migration_meta(key,value,created_at)
+SELECT 'manual_followed_shows_backfill_v1','done',datetime('now')
+WHERE NOT EXISTS (
+  SELECT 1 FROM migration_meta WHERE key='manual_followed_shows_backfill_v1'
 );
