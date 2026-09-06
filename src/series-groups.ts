@@ -32,6 +32,13 @@ export const SERIES_GROUPS:SeriesGroupDefinition[]=[
     rootName:"Dexter",
     description:"Follow Dexter and every Dexter: … series, including future additions. Unrelated titles such as Dexter's Laboratory are excluded.",
     searchTerms:["dexter"]
+  },
+  {
+    slug:"ncis",
+    title:"All NCIS",
+    rootName:"NCIS",
+    description:"Follow NCIS and every NCIS: … series, including future spin-offs discovered later.",
+    searchTerms:["ncis"]
   }
 ];
 
