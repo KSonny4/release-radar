@@ -20,9 +20,9 @@ Self-hosted TV-series and movie release browser for **radar.pkubelka.cz**, built
 - **D1**: series, episodes, followed shows, movies and sync cursors.
 - **Cron Trigger**: every 15 minutes. TVmaze show pages and TMDB movie pages are incremental. The full future episode schedule runs roughly once per day.
 - **Custom Domain**: `radar.pkubelka.cz`.
-- **GitHub Actions**: deploys `master`, auto-provisions the D1 binding, applies migrations and optionally syncs application secrets.
+- **GitHub Actions**: type-checks pull requests and deploys `master`, auto-provisions the D1 binding, applies migrations and optionally syncs application secrets.
 
-The sync is deliberately kept below the Cloudflare Workers Free-plan default subrequest ceiling. A normal run uses at most roughly 47 external requests: five TVmaze show-index pages plus two TMDB Discover pages and up to 40 TMDB movie-detail calls. A due full-schedule sync adds one more TVmaze request.
+The importer keeps outbound subrequests under the Workers Free-plan ceiling: a normal run uses at most roughly 47 external requests, and a run that also refreshes the TVmaze full schedule uses roughly 48. **Workers Paid is recommended for production** because the Free plan's 10 ms CPU limit is too tight for reliably parsing the multi-megabyte TVmaze full schedule and writing the resulting D1 rows. Workers Paid currently has a $5 USD monthly minimum.
 
 ## One-time Cloudflare / GitHub setup
 
@@ -34,9 +34,11 @@ The repository is deployment-ready, but credentials cannot be created from repos
 
 `radar.pkubelka.cz` must **not** already have a conflicting CNAME. The Worker config declares it as a Cloudflare **Custom Domain**, so Cloudflare creates the required DNS record and certificate during deployment.
 
+For reliable ingestion, enable the **Workers Paid** plan on the Cloudflare account.
+
 ### 2. Create a Cloudflare API token
 
-Start with Cloudflare's **Edit Cloudflare Workers** token template and scope it to the correct account/`pkubelka.cz` zone. Also add **D1 Edit/Write** because the workflow provisions and migrates D1.
+Start with Cloudflare's **Edit Cloudflare Workers** token template and scope it to the correct account/`pkubelka.cz` zone. Also add **D1 Edit** because the workflow provisions and migrates D1.
 
 ### 3. Add GitHub Actions secrets
 
@@ -57,7 +59,7 @@ Recommended application secrets:
 
 If the three application secrets are absent, the Worker still deploys and series browsing can bootstrap, but the relevant features show as unconfigured.
 
-### 4. Push to `master`
+### 4. Merge to `master`
 
 `.github/workflows/deploy.yml` will:
 
