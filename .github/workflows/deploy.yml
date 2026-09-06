@@ -76,6 +76,38 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: node scripts/verify-neon-import.mjs
 
+      - name: Calendar data diagnostics
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atc "
+            SELECT json_build_object(
+              'followed_shows', (SELECT COUNT(*) FROM followed_shows),
+              'future_episode_rows', (SELECT COUNT(*) FROM episodes WHERE airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')),
+              'series_calendar_events', (
+                SELECT COUNT(*)
+                FROM episodes e
+                JOIN followed_shows f ON f.show_id = e.show_id
+                WHERE e.airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+                  AND e.airdate <= to_char(CURRENT_DATE + 730, 'YYYY-MM-DD')
+              ),
+              'series_calendar_first_date', (
+                SELECT MIN(e.airdate)
+                FROM episodes e
+                JOIN followed_shows f ON f.show_id = e.show_id
+                WHERE e.airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+              ),
+              'series_calendar_last_date', (
+                SELECT MAX(e.airdate)
+                FROM episodes e
+                JOIN followed_shows f ON f.show_id = e.show_id
+                WHERE e.airdate >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+              ),
+              'episodes_last_sync', (SELECT value FROM sync_state WHERE key = 'episodes_last_sync'),
+              'episodes_known_future', (SELECT value FROM sync_state WHERE key = 'episodes_known_future')
+            );
+          "
+
       - name: Configure Worker database secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
