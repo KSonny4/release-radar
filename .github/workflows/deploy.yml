@@ -200,6 +200,13 @@ jobs:
           ACCESS_ALLOWED_EMAIL: ksonny4@gmail.com
         run: node scripts/provision-cloudflare-access.mjs
 
+      - name: Configure Google Calendar Cloudflare bypass
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID: 0fcca39cc6516b8e23971bd717c0e9ca
+        run: node scripts/provision-cloudflare-calendar-waf.mjs
+
       - name: Verify Access boundaries
         run: |
           HEADERS="$(mktemp)"
@@ -218,6 +225,12 @@ jobs:
             STATUS="$(curl --silent --show-error --output /dev/null --max-redirs 0 --write-out '%{http_code}' "https://radar.pkubelka.cz/calendar/${FEED}.ics")"
             if [ "$STATUS" != "404" ]; then
               echo "Expected ${FEED} feed without its calendar token to reach Release Radar and return 404; got HTTP ${STATUS}" >&2
+              exit 1
+            fi
+
+            GOOGLE_STATUS="$(curl --silent --show-error --user-agent 'Google-Calendar-Importer' --output /dev/null --max-redirs 0 --write-out '%{http_code}' "https://radar.pkubelka.cz/calendar/${FEED}.ics")"
+            if [ "$GOOGLE_STATUS" != "404" ]; then
+              echo "Expected Google Calendar importer to bypass Cloudflare and reach ${FEED} feed; got HTTP ${GOOGLE_STATUS}" >&2
               exit 1
             fi
           done
