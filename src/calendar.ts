@@ -12,7 +12,7 @@ export async function handleCalendarFeed(request:Request,env:Env):Promise<Respon
 }
 
 async function seriesFeed(env:Env):Promise<Response>{
-  const rows=await all<EpisodeRow>(env.DB,`SELECT e.*,s.name AS show_name FROM episodes e JOIN shows s ON s.id=e.show_id JOIN followed_shows f ON f.show_id=s.id WHERE e.airdate>=? AND e.airdate<=? ORDER BY e.airdate,e.airstamp,e.id`,[dateOnly(new Date()),dateOnly(addDays(new Date(),730))]);
+  const rows=await all<EpisodeRow>(env.DB,`SELECT e.*,s.name AS show_name FROM episodes e JOIN shows s ON s.id=e.show_id JOIN followed_shows f ON f.show_id=s.id WHERE e.airdate<=? ORDER BY e.airdate,e.airstamp,e.id`,[dateOnly(addDays(new Date(),730))]);
   const events=rows.filter(e=>e.airdate).map(e=>{
     const se=e.season!==null&&e.number!==null?`S${String(e.season).padStart(2,"0")}E${String(e.number).padStart(2,"0")}`:"Episode";
     const summary=`${e.show_name||"Series"} ${se}${e.name?` · ${e.name}`:""}`;
