@@ -113,15 +113,14 @@ document.addEventListener('submit',async(e)=>{
       if(!response.ok)throw new Error('filter failed');
       const doc=new DOMParser().parseFromString(await response.text(),'text/html');
       if(current!==sequence)return;
-      const fresh=doc.querySelector('main .grid');
-      const existing=document.querySelector('main .grid');
-      if(fresh&&existing)existing.replaceWith(fresh);
-      const freshEmpty=doc.querySelector('main .empty');
-      if(!fresh&&freshEmpty&&existing)existing.replaceWith(freshEmpty);
-      const freshPager=doc.querySelector('main .pager');
-      const oldPager=document.querySelector('main .pager');
-      if(freshPager&&oldPager)oldPager.replaceWith(freshPager);
-      else if(!freshPager&&oldPager)oldPager.remove();
+      // Swap everything rendered after the filter form (grid, empty state,
+      // pager) so results reappear after a query that matched nothing.
+      const freshForm=doc.querySelector('main form.filters');
+      if(!freshForm)throw new Error('filter failed');
+      while(form.nextSibling)form.nextSibling.remove();
+      const freshNodes=[];
+      for(let n=freshForm.nextSibling;n;n=n.nextSibling)freshNodes.push(n);
+      form.after(...freshNodes);
       history.replaceState(null,'',url.pathname+url.search);
     }catch{}finally{if(current===sequence)form.classList.remove('is-loading');}
   };
