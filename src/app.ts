@@ -2,6 +2,7 @@ import type { Env, EpisodeRow, ExecutionContextLike, MovieRow, ShowRow } from ".
 import { BASE_URL } from "./types";
 import { addDays, all, dateOnly, nowIso, scalar } from "./db";
 import { runManualSync, syncShowSearch } from "./sync";
+import { mySeriesPage } from "./my-series";
 import { followShowManually, getSeriesGroup, getSeriesGroupCards, subscribeSeriesGroup, unfollowShowManually, unsubscribeSeriesGroup, type SeriesGroupCard } from "./series-groups";
 import { MOVIE_GENRES, TV_GENRES, attr, chip, clean, empty, episodeRow, esc, htmlResponse, isAdmin, jsonResponse, layout, manageMovieGrid, manageShowGrid, movieGrid, numParam, pager, parseGenres, redirect, selected, showGrid } from "./ui";
 
@@ -54,6 +55,7 @@ export async function handleRequest(request:Request,env:Env,ctx:ExecutionContext
   if(path==="/series"&&request.method==="GET")return seriesBrowse(url,request,env);
   if(path==="/movies"&&request.method==="GET")return movieBrowse(url,request,env);
   if(path==="/new-series"&&request.method==="GET")return newSeries(url,request,env);
+  if(path==="/my-series"&&request.method==="GET")return mySeriesPage(request,env);
   if(path==="/"&&request.method==="GET")return dashboard(request,env);
   return htmlResponse(layout("Not found",`<section class="panel"><h1>404</h1><p>That page does not exist.</p></section>`,request,env),404);
 }
@@ -84,7 +86,7 @@ async function dashboard(request:Request,env:Env):Promise<Response>{
   ]);
   const body=`<div class="stream-home"><section class="hero"><div><p class="eyebrow">Release Radar</p><h1>Know what drops next.</h1><p class="lede">Your personal release queue for series and movies. Pick what matters once, then let your calendar keep itself up to date.</p><div class="actions"><a class="button primary" href="/calendar">Calendar</a><a class="button secondary" href="/series">Browse series</a></div></div><div class="stats">${stat(followed,"series saved")}${stat(selectedMovies,"movies saved")}${stat(shows,"series indexed")}${stat(movies,"movies indexed")}</div></section>
   ${section("Premieres","Brand-new series this week","/new-series")}${showGrid(newShows)}
-  ${section("My Series","Upcoming episodes","/calendar")}${episodes.length?`<div class="timeline">${episodes.map(episodeRow).join("")}</div>`:empty("Add series to your calendar and their future episodes will appear here.")}
+  ${section("My Series","Upcoming episodes","/my-series")}${episodes.length?`<div class="timeline">${episodes.map(episodeRow).join("")}</div>`:empty("Add series to your calendar and their future episodes will appear here.")}
   ${section("Coming soon","Movies releasing in the next 30 days","/movies")}${movieGrid(soonMovies)}</div>`;
   return htmlResponse(layout("Home",body,request,env));
 }
